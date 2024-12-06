@@ -80,8 +80,8 @@ function draw(){
 }
 
 function putCircle(pos, r, color) {
-    const x = Math.floor(pos[0]);
-    const y = Math.floor(pos[1]);
+    const x = Math.round(pos[0]);
+    const y = Math.round(pos[1]);
 	for (let i = 0; i < r*r; i++){
 		x1 = (i % (r));
 		y1 = Math.floor(i / (r));
@@ -114,6 +114,7 @@ function Solver(){
     this.update = function(deltaTime){
         this.applyGravity();
         this.updatePositions(deltaTime);
+        this.solveCollisions()
         this.applyConstraint([400,400], 200);
     }
 
@@ -145,8 +146,36 @@ function Solver(){
         }
     }
 
+    this.solveCollisions = function(){
+        if (this.objects.length > 1){
+            for (let i = 0; i < this.objects.length; i++){
+                for (let j = 0; j < this.objects.length; j++){
+                    if(i == j){continue;}
+                    const threshold = this.objects[i].size + this.objects[j].size;
+
+                    dx = this.objects[i].pos[0] - this.objects[j].pos[0];
+                    dy = this.objects[i].pos[1] - this.objects[j].pos[1];
+
+                    dist = Math.sqrt(dx*dx + dy*dy);
+
+                    if (dist < threshold){
+                        const ndx = (dx / dist);
+                        const ndy = (dy / dist);
+                        console.log(ndx * (threshold-dist) * (1/2),ndy * (threshold-dist) * (1/2));
+                        this.objects[i].pos[0] += ndx * (threshold-dist) * (1/2);
+                        this.objects[i].pos[1] += ndy * (threshold-dist) * (1/2);
+
+                        this.objects[j].pos[0] -= ndx * (threshold-dist) * (1/2);
+                        this.objects[j].pos[1] -= ndy * (threshold-dist) * (1/2);
+                    }
+                }
+            }
+        }
+    }
+
     this.setup = function(){
-        this.objects.push(new VerletObject([580,400], 20, [0,0,255]));
+        this.objects.push(new VerletObject([580,400], 10, [0,0,255]));
+        this.objects.push(new VerletObject([220,400], 20, [255,0,0]));
     }
 }
 
@@ -160,12 +189,10 @@ function VerletObject(pos, size, color){
 
     this.updatePosition = function(deltaTime){
         const vel = [this.pos[0] - this.oldPos[0], this.pos[1] - this.oldPos[1]];
-
         //save pos
         this.oldPos = this.pos;
         //apply verlet
         this.pos = [this.pos[0] + vel[0] + this.acceleration[0] * deltaTime * deltaTime, this.pos[1] + vel[1] + this.acceleration[1] * deltaTime * deltaTime];
-        console.log(this.pos)
         //reset acceleration
         this.acceleration = [0,0];
     }
