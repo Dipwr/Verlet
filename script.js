@@ -11,6 +11,10 @@ const imageData = ctx.createImageData(boundX, boundY);
 let paused = false;
 const simSpeed = 1;
 
+//solver
+const solver = new Solver();
+
+//clear buffer
 let toBeCleared = [];
 
 //timing setup
@@ -27,6 +31,8 @@ function setup(){
 		imageData.data[i+2] = 255;
 		imageData.data[i+3] = 255;
 	}
+
+    solver.setup();
 
     prevTs = window.performance.now() / 1000
 	requestAnimationFrame(frame);
@@ -47,7 +53,7 @@ function frame() {
 }
 
 function update(deltaTime){
-
+    solver.update(deltaTime);
 }
 
 function draw(){
@@ -62,13 +68,20 @@ function draw(){
 	toBeCleared = [];
     
     //draw calls
-    putCircle(500,500, 10, [0,0,0]);
+    putCircle([400,400], 200, [128,128,128]);//constraint
+
+    for (let i = 0; i < solver.objects.length; i++){
+        const obj = solver.objects[i];
+        putCircle(obj.pos, obj.size, obj.color);
+    }
 
     //draw frame
     ctx.putImageData(imageData, 0, 0);
 }
 
-function putCircle(x, y, r, color) {
+function putCircle(pos, r, color) {
+    const x = Math.floor(pos[0]);
+    const y = Math.floor(pos[1]);
 	for (let i = 0; i < r*r; i++){
 		x1 = (i % (r));
 		y1 = Math.floor(i / (r));
@@ -91,4 +104,74 @@ function putPixel(x, y, color){
 	imageData.data[base+2] = color[2];
 
 	toBeCleared.push([x,y]);
+}
+
+function Solver(){
+    this.objects = []
+
+    this.gravity = [0, 1000];
+
+    this.update = function(deltaTime){
+        this.applyGravity();
+        this.updatePositions(deltaTime);
+        this.applyConstraint([400,400], 200);
+    }
+
+    this.updatePositions = function(deltaTime){
+        for (let i = 0; i < this.objects.length; i++){
+            this.objects[i].updatePosition(deltaTime);
+        }
+    }
+
+    this.applyGravity = function(){
+        for (let i = 0; i < this.objects.length; i++){
+            this.objects[i].accelerate(this.gravity); 
+        }
+    }
+
+    this.applyConstraint = function(center, r){
+        for (let i = 0; i < this.objects.length; i++){
+            const dx = this.objects[i].pos[0] - center[0];
+            const dy = this.objects[i].pos[1] - center[1];
+
+            const dist = Math.sqrt(dx*dx + dy*dy); 
+
+            if (dist > r-this.objects[i].size){
+                const ndx = dx / dist;
+                const ndy = dy / dist;
+                this.objects[i].pos[0] += ndx * -(dist + this.objects[i].size - r);
+                this.objects[i].pos[1] += ndy * -(dist + this.objects[i].size - r);
+            }
+        }
+    }
+
+    this.setup = function(){
+        this.objects.push(new VerletObject([580,400], 20, [0,0,255]));
+    }
+}
+
+function VerletObject(pos, size, color){
+    this.pos = pos;
+    this.oldPos = pos;
+    this.acceleration = [0,0];
+
+    this.size = size;
+    this.color = color;
+
+    this.updatePosition = function(deltaTime){
+        const vel = [this.pos[0] - this.oldPos[0], this.pos[1] - this.oldPos[1]];
+
+        //save pos
+        this.oldPos = this.pos;
+        //apply verlet
+        this.pos = [this.pos[0] + vel[0] + this.acceleration[0] * deltaTime * deltaTime, this.pos[1] + vel[1] + this.acceleration[1] * deltaTime * deltaTime];
+        console.log(this.pos)
+        //reset acceleration
+        this.acceleration = [0,0];
+    }
+
+    this.accelerate = function(acc){
+        this.acceleration[0] += acc[0];
+        this.acceleration[1] += acc[1];
+    }
 }
