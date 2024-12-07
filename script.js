@@ -6,10 +6,12 @@ const boundY = window.innerHeight;
 canvas.width = boundX;
 canvas.height = boundY;
 
-const imageData = ctx.createImageData(boundX, boundY);
-
 let paused = false;
 const simSpeed = 1;
+
+let mouseDown = false;
+let mousePos = [0,0];
+let mouseSize = 100;
 
 //solver
 const solver = new Solver();
@@ -25,13 +27,17 @@ let dtAcc = 0;
 setup();
 
 function setup(){
-    //initialise the canvas array
-	for (let i = 0; i < boundX*boundY*4; i += 4){
-		imageData.data[i] = 255;
-		imageData.data[i+1] = 255;
-		imageData.data[i+2] = 255;
-		imageData.data[i+3] = 255;
-	}
+    window.addEventListener('mousedown', function () {
+		mouseDown = true;
+	});
+	window.addEventListener('mouseup', function () {
+		mouseDown = false;
+	});
+	
+	window.addEventListener('mousemove', function (e) {
+		mousePos[0] = e.x
+		mousePos[1] = e.y
+	});
 
     solver.setup();
 
@@ -60,67 +66,59 @@ function frame() {
 function timedEvents(deltaTime){
     dtAcc += deltaTime;
     if (dtAcc >= 0.01){
-        solver.objects.push(new VerletObject([580,400], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
+        solver.objects.push(new VerletObject([400+Math.random()*50,400+Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
+        solver.objects.push(new VerletObject([400-Math.random()*50,400-Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
+        solver.objects.push(new VerletObject([400-Math.random()*50,400+Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
+        solver.objects.push(new VerletObject([400+Math.random()*50,400-Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
         dtAcc = 0;
     }
 }
 
 function update(deltaTime){
-    solver.update(deltaTime, 4);
+    solver.update(deltaTime, 8);
 }
 
 function draw(deltaTime){
     //clear prev frame
-    for (let i = 0; i < toBeCleared.length; i++){
-		let base = (toBeCleared[i][0] + toBeCleared[i][1] * boundX) * 4;
-
-		imageData.data[base] = 255;
-		imageData.data[base+1] = 255;
-		imageData.data[base+2] = 255;
-	}
-	toBeCleared = [];
+    ctx.clearRect(0, 0, boundX, boundY);
     
     //draw calls
-    putCircle([400,400], 200, [128,128,128]);//constraint
+    ctx.font = "10px Arial";
+    ctx.fillStyle = "black";
+    ctx.fillText("F.P.S.: " + (1/deltaTime).toFixed(2),10,10);
+    ctx.fillText("D.T.: " + (deltaTime*1000).toFixed(2) + "ms",10,20);
+    ctx.fillText("Particles: " + solver.objects.length,10,30);
 
-    for (let i = 0; i < solver.objects.length; i++){
-        const obj = solver.objects[i];
-        putCircle(obj.pos, obj.size, obj.color);
+    //constraints    
+    ctx.fillStyle = "rgb(128 128 128)";
+    ctx.fillRect(50,50,700,700);
+    drawCircle([400,400], 400, "rgb(100 100 100)");
+    if(mouseDown){
+        drawCircle(mousePos, mouseSize, false, "rgb(255 0 0)", 2);
     }
 
-    //draw frame
-    ctx.putImageData(imageData, 0, 0);
-
-    ctx.font = "10px Arial";
-    ctx.fillText("FPS: " + (1/deltaTime).toFixed(2),10,10);
-    ctx.fillText("D.T.: " + (deltaTime*1000).toFixed(2) + "ms",10,20);
+    //particles
+    for (let i = 0; i < solver.objects.length; i++){
+        const obj = solver.objects[i];
+        drawCircle(obj.pos, obj.size, `rgb(${obj.color[0]} ${obj.color[1]} ${obj.color[2]})`);
+    }
 }
 
-function putCircle(pos, r, color) {
-    const x = Math.round(pos[0]);
-    const y = Math.round(pos[1]);
-	for (let i = 0; i < r*r; i++){
-		x1 = (i % (r));
-		y1 = Math.floor(i / (r));
-		
-		if(x1*x1 + y1*y1 < r*r){
-			putPixel(x+x1, y+y1, color);
-			putPixel(x-x1, y+y1, color);
-			putPixel(x+x1, y-y1, color);
-			putPixel(x-x1, y-y1, color);
-		}
-		
-	}
-}
+function drawCircle(pos, r, fill, stroke, strokeWidth) {
+    const x = pos[0];
+    const y = pos[1];
 
-function putPixel(x, y, color){
-	let base = (x + y * boundX) * 4;
-
-	imageData.data[base] = color[0];
-	imageData.data[base+1] = color[1];
-	imageData.data[base+2] = color[2];
-
-	toBeCleared.push([x,y]);
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, 2 * Math.PI, false)
+    if (fill) {
+      ctx.fillStyle = fill
+      ctx.fill()
+    }
+    if (stroke) {
+      ctx.lineWidth = strokeWidth
+      ctx.strokeStyle = stroke
+      ctx.stroke()
+    }
 }
 
 function Solver(){
@@ -133,20 +131,23 @@ function Solver(){
     this.maxSize = 0;
 
     this.update = function(deltaTime, subSteps){
-        this.applyGravity();
-        this.updatePositions(deltaTime);
-        for(let i = 0; i < subSteps; i++){
-            this.solveCollisions()
-            this.applyConstraint([400,400], 200);
+        if (this.objects.length > 0){
+            const subdt = deltaTime/subSteps;
+            for(let i = 0; i < subSteps; i++){
+                this.applyGravity();
+                this.updatePositions(subdt);
+                this.solveCollisions()
+                this.applyConstraints();
+            }
         }
     }
 
     this.updatePositions = function(deltaTime){
         //clear the cells
         this.cells = [];
-	    for (let i = 0; i < Math.ceil(boundX/this.maxSize); i++){
+	    for (let i = 0; i < Math.ceil((boundX + (2 * this.maxSize))/this.maxSize); i++){
             this.cells.push([]);
-            for (let j = 0; j < Math.ceil(boundY/this.maxSize); j++){
+            for (let j = 0; j < Math.ceil((boundY + (2 * this.maxSize))/this.maxSize); j++){
                 this.cells[i].push([]);
             }
         }
@@ -154,9 +155,24 @@ function Solver(){
         for (let i = 0; i < this.objects.length; i++){
             this.objects[i].updatePosition(deltaTime);
 
-            let cellx = Math.floor(this.objects[i].pos[0] / this.maxSize);
-		    let celly = Math.floor(this.objects[i].pos[1] / this.maxSize);
+            if (this.isOutOfBounds(this.objects[i].pos, this.objects[i].size)){
+                this.objects.splice(i, 1);
+
+                i--
+                continue;
+            }
+
+            let cellx = Math.floor((this.objects[i].pos[0] + this.maxSize) / this.maxSize);
+		    let celly = Math.floor((this.objects[i].pos[1] + this.maxSize) / this.maxSize);
 		    this.cells[cellx][celly].push(i);
+        }
+    }
+
+    this.isOutOfBounds = function(pos, r){
+        if ((pos[0] < -r) || (pos[0] > boundX + r) || (pos[1] < -r) || (pos[1] > boundY + r)) {
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -166,7 +182,13 @@ function Solver(){
         }
     }
 
-    this.applyConstraint = function(center, r){
+    this.applyConstraints = function(){
+        this.mouseConstraint(mouseSize);
+        this.circleConstraint([400,400], 400);
+        this.rectangleConstraint([400,400], [700,700]);
+    }
+
+    this.circleConstraint = function(center, r){
         for (let i = 0; i < this.objects.length; i++){
             const dx = this.objects[i].pos[0] - center[0];
             const dy = this.objects[i].pos[1] - center[1];
@@ -178,6 +200,46 @@ function Solver(){
                 const ndy = dy / dist;
                 this.objects[i].pos[0] += ndx * -(dist + this.objects[i].size - r);
                 this.objects[i].pos[1] += ndy * -(dist + this.objects[i].size - r);
+            }
+        }
+    }
+
+    this.rectangleConstraint = function(center, size){
+        for (let i = 0; i < this.objects.length; i++){
+            if (this.objects[i].pos[0] < (center[0] - size[0]/2) + this.objects[i].size) {
+                this.objects[i].pos[0] = (center[0] - size[0]/2) + this.objects[i].size;
+            } else if(this.objects[i].pos[0] > (center[0] + size[0]/2) - this.objects[i].size){
+                this.objects[i].pos[0] = (center[0] + size[0]/2) - this.objects[i].size;
+            }
+            if (this.objects[i].pos[1] < (center[1] - size[1]/2) + this.objects[i].size) {
+                this.objects[i].pos[1] = (center[1] - size[1]/2) + this.objects[i].size;
+            } else if(this.objects[i].pos[1] > (center[1] + size[1]/2) - this.objects[i].size){
+                this.objects[i].pos[1] = (center[1] + size[1]/2) - this.objects[i].size;
+            }
+        }
+    }
+
+    this.mouseConstraint = function(r){
+        if(mouseDown){
+            for (let i = 0; i < this.objects.length; i++){
+                const threshold = this.objects[i].size + r;
+                dx = this.objects[i].pos[0] - mousePos[0];
+                dy = this.objects[i].pos[1] - mousePos[1];
+
+                const sqdist = dx*dx + dy*dy
+                if (sqdist == 0){
+                    dist = 1;
+                } else {
+                    dist = Math.sqrt(sqdist);
+                }
+                    
+                if (dist < threshold){
+                    const ndx = (dx / dist);
+                    const ndy = (dy / dist);
+                        
+                    this.objects[i].pos[0] += ndx * (threshold-dist);
+                    this.objects[i].pos[1] += ndy * (threshold-dist);
+                }
             }
         }
     }
@@ -194,7 +256,13 @@ function Solver(){
                     dx = this.objects[i].pos[0] - this.objects[ni].pos[0];
                     dy = this.objects[i].pos[1] - this.objects[ni].pos[1];
 
-                    dist = Math.sqrt(dx*dx + dy*dy);
+                    const sqdist = dx*dx + dy*dy
+                    if (sqdist == 0){
+                        dist = 1;
+                    } else {
+                        dist = Math.sqrt(sqdist);
+                    }
+                    
 
                     if (dist < threshold){
                         const m1 = this.objects[i].mass;
@@ -215,8 +283,8 @@ function Solver(){
     }
 
     this.getNeigbours = function(particleIndex){
-        let cellx = Math.floor(this.objects[particleIndex].pos[0] / this.maxSize);
-        let celly = Math.floor(this.objects[particleIndex].pos[1] / this.maxSize);
+        let cellx = Math.floor((this.objects[particleIndex].pos[0] + this.maxSize) / this.maxSize);
+        let celly = Math.floor((this.objects[particleIndex].pos[1] + this.maxSize) / this.maxSize);
         
         let PossibleNeighboors = [true,true,true,true,true,true,true,true,true];
         if (cellx == 0){
@@ -224,7 +292,7 @@ function Solver(){
             PossibleNeighboors[3] = false;
             PossibleNeighboors[6] = false;
         }
-        if (cellx == Math.floor(boundX/this.maxSize)){
+        if (cellx == Math.floor((boundX + (2 * this.maxSize))/this.maxSize)){
             PossibleNeighboors[2] = false;
             PossibleNeighboors[5] = false;
             PossibleNeighboors[8] = false;
@@ -234,7 +302,7 @@ function Solver(){
             PossibleNeighboors[1] = false;
             PossibleNeighboors[2] = false;
         }
-        if (celly == Math.floor(boundY/this.maxSize)){
+        if (celly == Math.floor((boundY + (2 * this.maxSize))/this.maxSize)){
             PossibleNeighboors[6] = false;
             PossibleNeighboors[7] = false;
             PossibleNeighboors[8] = false;
