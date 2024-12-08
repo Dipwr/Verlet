@@ -1,5 +1,5 @@
 const canvas = document.querySelector("canvas");
-const ctx = canvas.getContext("2d");
+const ctx = canvas.getContext("2d", { alpha: false });
 
 const boundX = window.innerWidth;
 const boundY = window.innerHeight;
@@ -66,16 +66,17 @@ function frame() {
 function timedEvents(deltaTime){
     dtAcc += deltaTime;
     if (dtAcc >= 0.01){
-        solver.objects.push(new VerletObject([400+Math.random()*50,400+Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
-        solver.objects.push(new VerletObject([400-Math.random()*50,400-Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
-        solver.objects.push(new VerletObject([400-Math.random()*50,400+Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
-        solver.objects.push(new VerletObject([400+Math.random()*50,400-Math.random()*50], 5, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver));
+        for (let i = 0; i < 3; i++){
+            const obj = new VerletObject([100,100 + (50*i)], 10, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver);
+            obj.accelerate([300000,0]);
+            solver.objects.push(obj);
+        }
         dtAcc = 0;
     }
 }
 
 function update(deltaTime){
-    solver.update(deltaTime, 8);
+    solver.update(deltaTime, 8, 1);
 }
 
 function draw(deltaTime){
@@ -84,7 +85,7 @@ function draw(deltaTime){
     
     //draw calls
     ctx.font = "10px Arial";
-    ctx.fillStyle = "black";
+    ctx.fillStyle = "white";
     ctx.fillText("F.P.S.: " + (1/deltaTime).toFixed(2),10,10);
     ctx.fillText("D.T.: " + (deltaTime*1000).toFixed(2) + "ms",10,20);
     ctx.fillText("Particles: " + solver.objects.length,10,30);
@@ -92,7 +93,7 @@ function draw(deltaTime){
     //constraints    
     ctx.fillStyle = "rgb(128 128 128)";
     ctx.fillRect(50,50,700,700);
-    drawCircle([400,400], 400, "rgb(100 100 100)");
+    //drawCircle([400,400], 400, "rgb(100 100 100)");
     if(mouseDown){
         drawCircle(mousePos, mouseSize, false, "rgb(255 0 0)", 2);
     }
@@ -105,8 +106,8 @@ function draw(deltaTime){
 }
 
 function drawCircle(pos, r, fill, stroke, strokeWidth) {
-    const x = pos[0];
-    const y = pos[1];
+    const x = Math.floor(pos[0]);
+    const y = Math.floor(pos[1]);
 
     ctx.beginPath()
     ctx.arc(x, y, r, 0, 2 * Math.PI, false)
@@ -130,14 +131,16 @@ function Solver(){
 
     this.maxSize = 0;
 
-    this.update = function(deltaTime, subSteps){
+    this.update = function(deltaTime, subSteps, iterations){
         if (this.objects.length > 0){
             const subdt = deltaTime/subSteps;
             for(let i = 0; i < subSteps; i++){
                 this.applyGravity();
                 this.updatePositions(subdt);
-                this.solveCollisions()
-                this.applyConstraints();
+                for (let j = 0; j < iterations; j++){
+                    this.solveCollisions();
+                    this.applyConstraints();
+                }
             }
         }
     }
@@ -162,8 +165,8 @@ function Solver(){
                 continue;
             }
 
-            let cellx = Math.floor((this.objects[i].pos[0] + this.maxSize) / this.maxSize);
-		    let celly = Math.floor((this.objects[i].pos[1] + this.maxSize) / this.maxSize);
+            const cellx = Math.floor((this.objects[i].pos[0] + this.maxSize) / this.maxSize);
+		    const celly = Math.floor((this.objects[i].pos[1] + this.maxSize) / this.maxSize);
 		    this.cells[cellx][celly].push(i);
         }
     }
@@ -184,7 +187,7 @@ function Solver(){
 
     this.applyConstraints = function(){
         this.mouseConstraint(mouseSize);
-        this.circleConstraint([400,400], 400);
+        //this.circleConstraint([400,400], 400);
         this.rectangleConstraint([400,400], [700,700]);
     }
 
@@ -253,10 +256,12 @@ function Solver(){
                     if(i == ni){continue;}
                     const threshold = this.objects[i].size + this.objects[ni].size;
 
-                    dx = this.objects[i].pos[0] - this.objects[ni].pos[0];
-                    dy = this.objects[i].pos[1] - this.objects[ni].pos[1];
+                    const dx = this.objects[i].pos[0] - this.objects[ni].pos[0];
+                    const dy = this.objects[i].pos[1] - this.objects[ni].pos[1];
 
                     const sqdist = dx*dx + dy*dy
+
+                    let dist;
                     if (sqdist == 0){
                         dist = 1;
                     } else {
@@ -283,34 +288,24 @@ function Solver(){
     }
 
     this.getNeigbours = function(particleIndex){
-        let cellx = Math.floor((this.objects[particleIndex].pos[0] + this.maxSize) / this.maxSize);
-        let celly = Math.floor((this.objects[particleIndex].pos[1] + this.maxSize) / this.maxSize);
+        const cellx = Math.floor((this.objects[particleIndex].pos[0] + this.maxSize) / this.maxSize);
+        const celly = Math.floor((this.objects[particleIndex].pos[1] + this.maxSize) / this.maxSize);
         
-        let PossibleNeighboors = [true,true,true,true,true,true,true,true,true];
+        let PossibleNeighboors = 0b111111111;
         if (cellx == 0){
-            PossibleNeighboors[0] = false;
-            PossibleNeighboors[3] = false;
-            PossibleNeighboors[6] = false;
-        }
-        if (cellx == Math.floor((boundX + (2 * this.maxSize))/this.maxSize)){
-            PossibleNeighboors[2] = false;
-            PossibleNeighboors[5] = false;
-            PossibleNeighboors[8] = false;
+            PossibleNeighboors = PossibleNeighboors & 0b110110110;
+        } else if (cellx == Math.floor((boundX + (2 * this.maxSize))/this.maxSize)){
+            PossibleNeighboors = PossibleNeighboors & 0b011011011;
         }
         if (celly == 0){
-            PossibleNeighboors[0] = false;
-            PossibleNeighboors[1] = false;
-            PossibleNeighboors[2] = false;
-        }
-        if (celly == Math.floor((boundY + (2 * this.maxSize))/this.maxSize)){
-            PossibleNeighboors[6] = false;
-            PossibleNeighboors[7] = false;
-            PossibleNeighboors[8] = false;
+            PossibleNeighboors = PossibleNeighboors & 0b111111000;
+        } else if (celly == Math.floor((boundY + (2 * this.maxSize))/this.maxSize)){
+            PossibleNeighboors = PossibleNeighboors & 0b000111111;
         }
     
         let neighboors = [];
         for (let i = 0; i < 9; i++){
-            if (PossibleNeighboors[i] == false){continue;}
+            if (((PossibleNeighboors >> i) & 0b000000001) == 0){continue;}
             neighboors = neighboors.concat(this.cells[cellx+(-1+(i%3))][celly+(-1+(Math.floor(i/3)))]);
         }
         
@@ -348,7 +343,7 @@ function VerletObject(pos, size, mass, color, solver){
     }
 
     this.onConstruction = function(){
-        if (size > solver.maxSize*2){
+        if (size*2 > solver.maxSize){
             solver.maxSize = size*2;
         }
     }
