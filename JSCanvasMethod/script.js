@@ -67,7 +67,7 @@ function timedEvents(deltaTime){
     dtAcc += deltaTime;
     if (dtAcc >= 0.01){
         for (let i = 0; i < 3; i++){
-            const obj = new VerletObject([100,100 + (50*i)], 10, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver);
+            const obj = new VerletObject([100,100 + (50*i)], 4, 1, [Math.random()*255,Math.random()*255,Math.random()*255], solver);
             obj.accelerate([300000,0]);
             solver.objects.push(obj);
         }
@@ -80,6 +80,7 @@ function update(deltaTime){
 }
 
 function draw(deltaTime){
+    //console.log("F.P.S.: " + (1/deltaTime).toFixed(2),"D.T.: " + (deltaTime*1000).toFixed(2) + "ms","Particles: " + solver.objects.length);
     //clear prev frame
     ctx.clearRect(0, 0, boundX, boundY);
     
