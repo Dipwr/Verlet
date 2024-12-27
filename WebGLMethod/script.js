@@ -128,38 +128,31 @@ function setup(){
 }
 
 function frame() {
+    //Recursive function (call itself)
+    requestAnimationFrame(frame);
+
 	//calculate DeltaTime
 	let now = (window.performance.now() / 1000);
 	let deltaTime = (now - prevTs) * simSpeed;
 	prevTs = now;
-
-    //diagnostics
-    
 
 	if(!paused){
         timedEvents(deltaTime);
 		update(deltaTime);
 		draw(deltaTime);
 	}
-	//Recursive function (call itself)
-	requestAnimationFrame(frame);
 }
 
 function timedEvents(deltaTime){
-    dtAcc += deltaTime;
     Tdt += deltaTime;
-    if (dtAcc >= 0.01){
-        for (let i = 0; i < 3; i++){
-            const obj = new VerletObject([100,100 + (12*i)], 5, 1, [Math.random(),Math.random(),Math.random()], solver);
-            obj.accelerate([200000,0]);
-            solver.objects.push(obj);
-        }
-        dtAcc = 0;
-    }
+
+    const obj = new VerletObject([500,100], Math.random()*7 + 3, 10, [Math.sin(Tdt*4),Math.cos(Tdt*4),1], solver);
+    obj.accelerate([Math.sin(Tdt*4)*200000,400000]);
+    solver.objects.push(obj);
 }
 
 function update(deltaTime){
-    solver.update(deltaTime, 5);
+    solver.update(deltaTime, 6);
 }
 
 function draw(deltaTime){
@@ -201,7 +194,9 @@ function Solver(){
 
     this.maxSize = 0;
 
-    this.update = function(deltaTime, subSteps, iterations){
+    this.constraints = [];
+
+    this.update = function(deltaTime, subSteps){
         if (this.objects.length > 0){
             const subdt = deltaTime/subSteps;
             for(let i = 0; i < subSteps; i++){
@@ -256,37 +251,82 @@ function Solver(){
 
     this.applyConstraints = function(){
         this.mouseConstraint(mouseSize);
-        //this.circleConstraint([400,400], 400);
-        this.rectangleConstraint([400,400], [700,700]);
+
+        for (let i = 0; i < this.constraints.length; i++){
+            this.constraints[i][0](this.constraints[i][1], this.objects);
+        }
+        this.objects[0].pos = [300, 400];
+        this.objects[39].pos = [700, 400];
     }
 
-    this.circleConstraint = function(center, r){
-        for (let i = 0; i < this.objects.length; i++){
-            const dx = this.objects[i].pos[0] - center[0];
-            const dy = this.objects[i].pos[1] - center[1];
+    this.addChain = function(count, properties, spacing){
+        const pos = properties[0];
+        let lastObj = new VerletObject(pos, properties[1], properties[2], properties[3], this);
+        this.objects.push(lastObj);
+        for (let i = 1; i < count; i++){
+            const obj = new VerletObject([pos[0]+spacing*i,pos[1]], properties[1], properties[2], properties[3], this);
+
+            this.objects.push(obj);
+            this.constraints.push([this.link, [obj, lastObj, 10]])
+
+            lastObj = obj;
+        }
+    }
+
+    this.link = function(args){
+        const obj1 = args[0];
+        const obj2 = args[1];
+        const threshold = args[2];
+
+        const dx = obj1.pos[0] - obj2.pos[0];
+        const dy = obj1.pos[1] - obj2.pos[1];
+
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        const m1 = obj1.mass;
+        const m2 = obj2.mass;
+
+        const ndx = dx / dist;
+        const ndy = dy / dist;
+
+        obj1.pos[0] += ndx * (threshold-dist) * (1 - m1/(m1+m2));
+        obj1.pos[1] += ndy * (threshold-dist) * (1 - m1/(m1+m2));
+
+        obj2.pos[0] -= ndx * (threshold-dist) * (1 - m2/(m1+m2));
+        obj2.pos[1] -= ndy * (threshold-dist) * (1 - m2/(m1+m2));
+    }
+
+    this.circleConstraint = function(args, objs){
+        const center = args[0];
+        const r = args[1];
+        for (let i = 0; i < objs.length; i++){
+            const dx = objs[i].pos[0] - center[0];
+            const dy = objs[i].pos[1] - center[1];
 
             const dist = Math.sqrt(dx*dx + dy*dy); 
 
-            if (dist > r-this.objects[i].size){
+            if (dist > r-objs[i].size){
                 const ndx = dx / dist;
                 const ndy = dy / dist;
-                this.objects[i].pos[0] += ndx * -(dist + this.objects[i].size - r);
-                this.objects[i].pos[1] += ndy * -(dist + this.objects[i].size - r);
+                objs[i].pos[0] += ndx * -(dist + objs[i].size - r);
+                objs[i].pos[1] += ndy * -(dist + objs[i].size - r);
             }
         }
     }
 
-    this.rectangleConstraint = function(center, size){
-        for (let i = 0; i < this.objects.length; i++){
-            /*if (this.objects[i].pos[0] < (center[0] - size[0]/2) + this.objects[i].size) {
-                this.objects[i].pos[0] = (center[0] - size[0]/2) + this.objects[i].size;
-            } else*/ if(this.objects[i].pos[0] > (center[0] + size[0]/2) - this.objects[i].size){
-                this.objects[i].pos[0] = (center[0] + size[0]/2) - this.objects[i].size;
+    this.rectangleConstraint = function(args, objs){
+        const center = args[0];
+        const size = args[1];
+        for (let i = 0; i < objs.length; i++){
+            if (objs[i].pos[0] < (center[0] - size[0]/2) + objs[i].size) {
+                objs[i].pos[0] = (center[0] - size[0]/2) + objs[i].size;
+            } else if(objs[i].pos[0] > (center[0] + size[0]/2) - objs[i].size){
+                objs[i].pos[0] = (center[0] + size[0]/2) - objs[i].size;
             }
-            if (this.objects[i].pos[1] < (center[1] - size[1]/2) + this.objects[i].size) {
-                this.objects[i].pos[1] = (center[1] - size[1]/2) + this.objects[i].size;
-            } else if(this.objects[i].pos[1] > (center[1] + size[1]/2) - this.objects[i].size){
-                this.objects[i].pos[1] = (center[1] + size[1]/2) - this.objects[i].size;
+            if (objs[i].pos[1] < (center[1] - size[1]/2) + objs[i].size) {
+                objs[i].pos[1] = (center[1] - size[1]/2) + objs[i].size;
+            } else if(objs[i].pos[1] > (center[1] + size[1]/2) - objs[i].size){
+                objs[i].pos[1] = (center[1] + size[1]/2) - objs[i].size;
             }
         }
     }
@@ -320,7 +360,7 @@ function Solver(){
     this.solveCollisions = function(){
         if (this.objects.length > 1){
             for (let i = 0; i < this.objects.length; i++){
-                let neighboors = this.getNeigbours(i);
+                const neighboors = this.getNeigbours(i);
                 for (let j = 0; j < neighboors.length; j++){
                     const ni = neighboors[j];
                     if(i == ni){continue;}
@@ -329,7 +369,7 @@ function Solver(){
                     const dx = this.objects[i].pos[0] - this.objects[ni].pos[0];
                     const dy = this.objects[i].pos[1] - this.objects[ni].pos[1];
 
-                    const sqdist = dx*dx + dy*dy
+                    const sqdist = dx*dx + dy*dy;
 
                     let dist;
                     if (sqdist == 0){
@@ -338,7 +378,6 @@ function Solver(){
                         dist = Math.sqrt(sqdist);
                     }
                     
-
                     if (dist < threshold){
                         const m1 = this.objects[i].mass;
                         const m2 = this.objects[ni].mass;
@@ -383,7 +422,7 @@ function Solver(){
     }
 
     this.setup = function(){
-        //this.objects.push(new VerletObject([220,400], 5, 10, [255,0,0], this));
+        this.addChain(40, [[400,400], 5, 10, [1,0,0.7]], 10);
     }
 }
 
